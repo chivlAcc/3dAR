@@ -1,1 +1,115 @@
-yess
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SHAR - Auto-Convert AR Viewer</title>
+    
+    <!-- Library Utama Open-Source -->
+    <script type="module" src="https://googleapis.com"></script>
+    <!-- Library untuk Ekstrak ZIP di Browser -->
+    <script src="https://cloudflare.com"></script>
+
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; background-color: #f5f5f5; }
+        h1 { color: #333; margin-bottom: 5px; }
+        .input-container { width: 100%; max-width: 500px; margin-bottom: 20px; display: flex; gap: 10px; }
+        input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+        button { padding: 10px 15px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:disabled { background-color: #ccc; }
+        #status { margin-bottom: 10px; color: #666; font-size: 14px; text-align: center; font-weight: bold; }
+        model-viewer { width: 100%; max-width: 500px; height: 400px; background-color: #e0e0e0; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body>
+
+    <h1>SHAR Application</h1>
+    <p style="color: #666; margin-top: 0;">Mendukung Link ZIP langsung dari Google Drive atau GitHub</p>
+
+    <div class="input-container">
+        <input type="text" id="urlInput" placeholder="Tempel link Google Drive .ZIP Anda di sini...">
+        <button id="loadBtn" onclick="processModel()">Muat Objek</button>
+    </div>
+    
+    <div id="status">Masukkan tautan untuk memulai...</div>
+
+    <model-viewer 
+        id="sharViewer" 
+        src="" 
+        ar 
+        ar-modes="scene-viewer quick-look" 
+        camera-controls 
+        touch-action="pan-y" 
+        shadow-intensity="1"
+        autoplay
+        alt="Pratinjau Model 3D SHAR">
+    </model-viewer>
+
+    <script>
+        // Fungsi untuk mendeteksi dan mengubah link Google Drive secara otomatis
+        function convertDriveLink(url) {
+            if (url.includes("drive.google.com")) {
+                // Pola regex untuk menangkap ID file dari link Google Drive
+                const matches = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+                if (matches && matches[1]) {
+                    return `https://google.com{matches[1]}`;
+                }
+            }
+            return url; // Kembalikan URL asli jika bukan dari Google Drive (misal dari GitHub)
+        }
+
+        async function processModel() {
+            let inputUrl = document.getElementById('urlInput').value.trim();
+            const viewer = document.getElementById('sharViewer');
+            const statusDiv = document.getElementById('status');
+            const button = document.getElementById('loadBtn');
+            
+            if (inputUrl === "") { alert("Masukkan URL terlebih dahulu!"); return; }
+            
+            // Konversi link di latar belakang jika berupa link Google Drive
+            const finalUrl = convertDriveLink(inputUrl);
+            
+            try {
+                button.disabled = true;
+                statusDiv.style.color = "#666";
+                statusDiv.innerText = "Menghubungkan ke server cloud & mengunduh ZIP...";
+                
+                // 1. Download file ZIP melalui Direct Download Link
+                const response = await fetch(finalUrl);
+                if (!response.ok) throw new Error("Gagal mengunduh file. Pastikan setelan file Google Drive sudah diatur ke 'Anyone with the link'!");
+                const blob = await response.blob();
+                
+                statusDiv.innerText = "Mengekstrak struktur folder 3D di memori HP...";
+                // 2. Ekstrak ZIP menggunakan JSZip
+                const zip = await JSZip.loadAsync(blob);
+                
+                let modelFile = null;
+                
+                // Mencari file model utama di dalam ZIP (.gltf atau .glb)
+                zip.forEach((relativePath, file) => {
+                    if (relativePath.endsWith('.gltf') || relativePath.endsWith('.glb')) {
+                        modelFile = file;
+                    }
+                });
+                
+                if (!modelFile) { throw new Error("Tidak ditemukan file model .gltf atau .glb di dalam ZIP!"); }
+                
+                // 3. Konversi file 3D utama menjadi Blob URL lokal agar bisa dimuat browser
+                const modelBlob = await modelFile.async("blob");
+                const modelUrl = URL.createObjectURL(modelBlob);
+                
+                statusDiv.style.color = "#28a745";
+                statusDiv.innerText = "Sukses! Ketuk ikon AR di pojok kanan bawah objek untuk mengaktifkan kamera.";
+                viewer.setAttribute('src', modelUrl);
+                
+            } catch (error) {
+                statusDiv.style.color = "#dc3545";
+                statusDiv.innerText = "Error: " + error.message;
+            } finally {
+                button.disabled = false;
+            }
+        }
+    </script>
+
+</body>
+</html>
